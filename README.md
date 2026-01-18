@@ -23,3 +23,21 @@ See [Project Proposal](proposal.md) for detailed motivation and methodology.
     ```bash
     pip install -e .
     ```
+
+## Reproduction (RQ2: Passive Evaluation)
+To reproduce the baseline results (Fashion MNIST with corner confounders):
+
+**Environment:**
+- Python 3.13.5
+- Install dependencies: `pip install -r requirements.txt`
+
+**Run Experiment:**
+```bash
+python src/rq2_repro.py
+```
+This script will:
+1.  Download/Load Fashion MNIST.
+2.  Train a baseline MLP (approx 44-48% accuracy).
+3.  Train MLPs with Counterexample (CE) augmentation.
+4.  Generate `rq2_baseline_results.png`.
+
