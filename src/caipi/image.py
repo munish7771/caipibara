@@ -276,6 +276,15 @@ class FashionProblem(ImageProblem):
         tr_images, tr_labels = _load_mnist(path, kind='train')
         ts_images, ts_labels = _load_mnist(path, kind='t10k')
         
+        # Filter for first 5 classes
+        tr_mask = tr_labels < 5
+        tr_images = tr_images[tr_mask]
+        tr_labels = tr_labels[tr_mask]
+        
+        ts_mask = ts_labels < 5
+        ts_images = ts_images[ts_mask]
+        ts_labels = ts_labels[ts_mask]
+        
         # Determine shades logic similar to baseline
         shades = np.linspace(0, 255, 10).astype(np.uint8)
         rng = check_random_state(kwargs.get('rng', 42))
@@ -321,8 +330,7 @@ class FashionProblem(ImageProblem):
         labels = np.hstack((tr_labels, ts_labels))
 
         CLASS_NAMES = [
-            'T-shirt', 'trouser', 'pullover', 'dress', 'coat', 'sandal',
-            'shirt', 'sneaker', 'bag', 'ankle_boots'
+            'T-shirt', 'trouser', 'pullover', 'dress', 'coat'
         ]
 
         # Pass already corrupted images, so we disable _add_confounders in this instance 

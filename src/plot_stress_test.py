@@ -71,7 +71,25 @@ def plot_stress_test(results_dir='results'):
         # Mean across folds for this file (seed)
         # We want the LAST iteration performance
         final_acc = perfs_arr[:, -1, 0].mean() # Metric 0 = Accuracy
-        final_expl = perfs_arr[:, -1, 1].mean() # Metric 1 = Confounder Recall
+        
+        # Metric 1 = Confounder Recall
+        # Find the last valid explanation score (!= -1) for each fold
+        expl_scores = []
+        for fold_idx in range(perfs_arr.shape[0]):
+            fold_expls = perfs_arr[fold_idx, :, 1]
+            # Search backwards
+            valid_score = -1.0
+            for score in reversed(fold_expls):
+                if score != -1:
+                    valid_score = score
+                    break
+            if valid_score != -1:
+                expl_scores.append(valid_score)
+        
+        if expl_scores:
+            final_expl = np.mean(expl_scores)
+        else:
+            final_expl = np.nan
 
         aggregated_acc[problem][n_p][f_i].append(final_acc)
         aggregated_expl[problem][n_p][f_i].append(final_expl)

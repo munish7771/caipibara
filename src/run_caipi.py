@@ -161,8 +161,30 @@ def caipi(problem,
           noise_prob=0.0,
           feedback_intensity=-1,
           basename=None,
+          snapshot_path=None,
           rng=None):
     rng = check_random_state(rng)
+
+    start_t = 0
+    if snapshot_path and os.path.exists(snapshot_path):
+        print(f"Resuming from snapshot: {snapshot_path}")
+        try:
+            snap = load(snapshot_path)
+            # data integrity check
+            if 't' in snap and 'known_examples' in snap:
+                 start_t = snap['t'] + 1
+                 known_examples = snap['known_examples']
+                 corrections = snap['corrections']
+                 perfs = snap['perfs']
+                 instant_perfs = snap['instant_perfs']
+                 params = snap['params']
+                 if 'rng_state' in snap:
+                     rng.set_state(snap['rng_state'])
+                 
+                 print(f"  Resumed at iteration {start_t}")
+        except Exception as e:
+            print(f"  Failed to load snapshot: {e}")
+            print("  Starting from scratch.")
 
     print('CAIPI T={} #train={} #known={} #test={} #eval={}'.format(
           max_iters,
@@ -189,12 +211,24 @@ def caipi(problem,
 
     #learner.select_model(problem.X[known_examples],
     #                     problem.y[known_examples])
-    learner.fit(problem.X[known_examples],
-                problem.y[known_examples])
+    if start_t == 0:
+        # Initial fit only if starting from scratch, or re-fit if resuming?
+        # If resuming, we need to re-fit with the loaded known_examples + corrections
+        # But wait, we haven't loaded them yet if start_t == 0.
+        
+        # Original code:
+        #learner.fit(problem.X[known_examples],
+        #            problem.y[known_examples])
+        
+        corrections = set()
+        perfs, instant_perfs, params = [], [], []
 
-    corrections = set()
-    perfs, instant_perfs, params = [], [], []
-    for t in range(max_iters):
+    # Always ensure model is fit on current known data before loop
+    # If resuming, this restores the model state
+    learner.fit(problem.X[known_examples + list(corrections)],
+                problem.y[known_examples + list(corrections)])
+
+    for t in range(start_t, max_iters):
 
         if len(known_examples) >= len(train_examples):
             break
@@ -216,7 +250,7 @@ def caipi(problem,
                                     [i],
                                     [i],
                                     t=t,
-                                    basename=basename + '_instant')
+                                    basename=basename + '_instant' if basename else None)
         instant_perfs.append(instant_perf)
 
         true_y = problem.query_label(i)
@@ -233,7 +267,7 @@ def caipi(problem,
                     problem.y[known_examples + list(corrections)])
         params.append(learner.get_params())
 
-        do_eval = eval_iters > 0 and t % eval_iters == 0
+        do_eval = (eval_iters > 0 and t % eval_iters == 0) or (t == max_iters - 1)
 
         print('evaluating on test|eval...')
         perf = problem.eval(learner,
@@ -246,6 +280,20 @@ def caipi(problem,
 
         params_for_print = np.round(learner.get_params(), decimals=1)
         print('{t:3d} : model = {params_for_print},  perfs on query = {instant_perf},  perfs on test = {perf}'.format(**locals()))
+
+        if snapshot_path:
+             dump(snapshot_path, {
+                 't': t,
+                 'known_examples': known_examples,
+                 'corrections': corrections,
+                 'perfs': perfs,
+                 'instant_perfs': instant_perfs,
+                 'params': params,
+                 'rng_state': rng.get_state()
+             })
+
+    if snapshot_path and os.path.exists(snapshot_path):
+        os.remove(snapshot_path)
 
     return perfs, instant_perfs, params
 
@@ -260,7 +308,28 @@ def eval_interactive(problem, args, rng=None):
                 .split(problem.y, problem.y)
 
     perfs, instant_perfs, params = [], [], []
+
+    # Check for existing partial results
+    if os.path.exists(basename + '.pickle'):
+        try:
+            saved_data = load(basename + '.pickle')
+            if 'perfs' in saved_data:
+                perfs = saved_data['perfs']
+                instant_perfs = saved_data['instant_perfs']
+                # params might be in a separate file or missing from dictionary in older versions
+                # checking param file:
+                if os.path.exists(basename + '-params.pickle'):
+                    params = load(basename + '-params.pickle')
+                
+                print(f"Found existing results with {len(perfs)} folds completed.")
+        except Exception as e:
+            print(f"Error loading existing results: {e}")
+
     for k, (train_examples, test_examples) in enumerate(folds):
+        if k < len(perfs):
+            print(f"Skipping fold {k+1}/{args.n_folds} (already done)")
+            continue
+
         print()
         print(80 * '=')
         print('Running fold {}/{}'.format(k + 1, args.n_folds))
@@ -288,7 +357,8 @@ def eval_interactive(problem, args, rng=None):
 
                   noise_prob=args.noise_prob,
                   feedback_intensity=args.feedback_intensity,
-                  basename=basename + '_fold={}'.format(k),
+                  basename=None,
+                  snapshot_path=basename + '_fold={}_snapshot.pickle'.format(k),
                   rng=rng)
         perfs.append(perf)
         instant_perfs.append(instant_perf)
