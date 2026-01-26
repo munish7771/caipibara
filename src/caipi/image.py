@@ -1,4 +1,6 @@
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import gzip
 from os.path import join
@@ -27,6 +29,7 @@ class ImageProblem(Problem):
             images, labels = images[perm], labels[perm]
 
         self.y = labels
+        self.confounder_masks = kwargs.pop('confounder_masks', None)
         self.images = self._add_confounders(images)
         self.X = np.stack([gray2rgb(image) for image in self.images], 0)
 
@@ -101,7 +104,10 @@ class ImageProblem(Problem):
             return set()
 
         image = self.images[i]
-        conf_mask = self._y_to_confounder(image, self.y[i])
+        if self.confounder_masks is not None:
+            conf_mask = self.confounder_masks[i].copy()
+        else:
+            conf_mask = self._y_to_confounder(image, self.y[i])
         conf_mask[conf_mask == 255] = 2
 
         conf_coords = self._extract_coords(image, conf_mask)
@@ -169,7 +175,10 @@ class ImageProblem(Problem):
             pred_y = learner.predict(densify(self.X[i]))[0]
 
             image = self.images[i]
-            conf_mask = self._y_to_confounder(image, true_y)
+            if self.confounder_masks is not None:
+                conf_mask = self.confounder_masks[i].copy()
+            else:
+                conf_mask = self._y_to_confounder(image, true_y)
             conf_mask[conf_mask == 255] = 2
 
             pred_mask, segments = \
@@ -224,7 +233,10 @@ class ImageProblem(Problem):
             image = self.X[i]
         ax.imshow(image)
 
-        fig.savefig(path, bbox_inches=0, pad_inches=0)
+        try:
+            fig.savefig(path, bbox_inches=0, pad_inches=0)
+        except Exception as e:
+            print(f"Error saving plot to {path}: {e}")
         plt.close(fig)
 
 
@@ -263,7 +275,49 @@ class FashionProblem(ImageProblem):
         path = join('data', 'fashion')
         tr_images, tr_labels = _load_mnist(path, kind='train')
         ts_images, ts_labels = _load_mnist(path, kind='t10k')
-        images = np.vstack((tr_images, ts_images))
+        
+        # Determine shades logic similar to baseline
+        shades = np.linspace(0, 255, 10).astype(np.uint8)
+        rng = check_random_state(kwargs.get('rng', 42))
+
+        # Apply confounders separately to train and test before stacking
+        # to match the baseline logic:
+        # Train: shade = f(label)
+        # Test: shade = random
+        
+        def apply_decoy(images, labels, mode='train'):
+            noisy = []
+            masks = []
+            for img, lbl in zip(images, labels):
+                r, c = img.shape
+                # 4x4 patch in random corner
+                corners = [
+                    (slice(0, 4), slice(0, 4)),
+                    (slice(0, 4), slice(c-4, c)),
+                    (slice(r-4, r), slice(0, 4)),
+                    (slice(r-4, r), slice(c-4, c))
+                ]
+                loc = corners[rng.randint(4)]
+                
+                if mode == 'train':
+                    val = shades[lbl]
+                else:
+                    val = rng.randint(0, 256)
+                    
+                new_img = img.copy()
+                new_img[loc] = val
+                noisy.append(new_img)
+                
+                mask = np.zeros_like(img)
+                mask[loc] = 255
+                masks.append(mask)
+            return np.array(noisy), np.array(masks)
+
+        tr_noisy, tr_masks = apply_decoy(tr_images, tr_labels, mode='train')
+        ts_noisy, ts_masks = apply_decoy(ts_images, ts_labels, mode='test')
+
+        images = np.vstack((tr_noisy, ts_noisy))
+        masks = np.vstack((tr_masks, ts_masks))
         labels = np.hstack((tr_labels, ts_labels))
 
         CLASS_NAMES = [
@@ -271,8 +325,18 @@ class FashionProblem(ImageProblem):
             'shirt', 'sneaker', 'bag', 'ankle_boots'
         ]
 
+        # Pass already corrupted images, so we disable _add_confounders in this instance 
+        # via a temporary override or by passing clean images?
+        # ImageProblem calls _add_confounders(images). 
+        # If we pass corrupted images to super, and override _add_confounders to identity, it works.
+        
         super().__init__(images=images,
                          labels=labels,
                          class_names=CLASS_NAMES,
                          n_examples=n_examples,
+                         confounder_masks=masks,
                          **kwargs)
+
+    def _add_confounders(self, images):
+        # Already added in init
+        return images

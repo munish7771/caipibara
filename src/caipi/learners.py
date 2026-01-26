@@ -4,6 +4,7 @@ from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.model_selection import StratifiedKFold
 from sklearn.utils import check_random_state
+from sklearn.neural_network import MLPClassifier
 
 from .utils import densify, vstack, hstack
 
@@ -115,6 +116,51 @@ class LinearLearner(ActiveLearner):
         examples = sorted(examples)
         probs = self.predict_proba(problem.X[examples])
         # NOTE probs has shape (n_examples, n_classes)
+        diffs = np.zeros(probs.shape[0])
+        for i, prob in enumerate(probs):
+            sorted_indices = np.argsort(prob)
+            diffs[i] = prob[sorted_indices[-1]] - prob[sorted_indices[-2]]
+        return examples[np.argmin(diffs)]
+
+
+
+class MLPLearner(ActiveLearner):
+    def __init__(self, *args, strategy='random', hidden_layer_sizes=(100, 100), **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Consistent with run_baseline.py
+        self._decision_model = self._prob_model = MLPClassifier(
+            hidden_layer_sizes=hidden_layer_sizes,
+            random_state=0, # Using 0 for consistency with other learners, baseline used 42
+            max_iter=200
+        )
+
+        self.select_query = {
+            'random': self._select_at_random,
+            'least-confident': self._select_least_confident,
+            'least-margin': self._select_least_margin,
+        }[strategy]
+
+    def get_params(self):
+        # MLP doesn't have coef_, return dummy or flattened weights + intercepts
+        # Returning dummy 0.0 to satisfy run_caipi logging for now
+        return np.array([0.0])
+
+    def _select_at_random(self, problem, examples):
+        return self.rng.choice(sorted(examples))
+
+    def _select_least_confident(self, problem, examples):
+        # Use probability-based confidence: 1 - max(prob)
+        examples = sorted(examples)
+        probs = self.predict_proba(problem.X[examples])
+        max_probs = probs.max(axis=1)
+        # Minimize max_prob (conf)
+        return examples[np.argmin(max_probs)]
+
+    def _select_least_margin(self, problem, examples):
+        # Same as LinearLearner logic
+        examples = sorted(examples)
+        probs = self.predict_proba(problem.X[examples])
         diffs = np.zeros(probs.shape[0])
         for i, prob in enumerate(probs):
             sorted_indices = np.argsort(prob)

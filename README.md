@@ -28,7 +28,7 @@ See [Project Proposal](proposal.md) for detailed motivation and methodology.
 To reproduce the baseline results (Fashion MNIST with corner confounders):
 
 **Environment:**
-- Python 3.13.5
+- Python 3.11.14
 - Install dependencies: `pip install -r requirements.txt`
 
 **Run Experiment:**
