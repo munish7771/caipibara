@@ -61,7 +61,7 @@ class ImageProblem(Problem):
         # NOTE we *oversegment* the image on purpose!
         segmenter = SegmentationAlgorithm('quickshift',
                                           kernel_size=1,
-                                          max_dist=4,
+                                          max_dist=2,
                                           ratio=0.1,
                                           sigma=0,
                                           random_seed=0)
@@ -74,7 +74,6 @@ class ImageProblem(Problem):
                                           num_features=self.n_features,
                                           batch_size=1,
                                           hide_color=False)
-        #print(expl.top_labels)
         _, mask = expl.get_image_and_mask(pred_y,
                                           positive_only=False,
                                           num_features=self.n_features,
@@ -118,9 +117,9 @@ class ImageProblem(Problem):
         # With prob noise_prob, add some random "good" pixels to the correction set
         # (simulating user saying "this object part is also a confounder")
         if noise_prob > 0 and self.rng.rand() < noise_prob:
-             # Candidates: pixels in prediction but NOT in confounder (true object parts)
-             candidates = list(pred_coords - conf_coords)
-             if candidates:
+            # Candidates: pixels in prediction but NOT in confounder (true object parts)
+            candidates = list(pred_coords - conf_coords)
+            if candidates:
                  # Add a random subset of candidates (e.g., 10% or just 1)
                  # Let's add 1-5 random pixels
                  n_noise = self.rng.randint(1, min(6, len(candidates)+1))

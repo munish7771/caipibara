@@ -36,7 +36,9 @@ def run_experiment(mode='full', start_seed=0, count=5, explain=False):
                             e_val = '10'
                             S_val = '1000'
                             n_val = None
+                            n_val = None
                             P_val = '0.1'
+                            F_val = '3' # Reduced from default 10 to ensure valid noise injection checks
 
                             if mode == 'quarter':
                                 # Fast/Light (~2 hours/seed)
@@ -68,24 +70,12 @@ def run_experiment(mode='full', start_seed=0, count=5, explain=False):
 
                             
                             # Construct expected output filename to check for existence
-                            # Format from run_caipi.py: problem__learner__strategy__s=seed__np=noise_prob__fi=intensity__n=n_val
-                            n_str = n_val if n_val else 'None' # wait, if n_val is None, arg is not passed, but basename logic uses args.n_examples which would be None? 
-                            # Let's check run_caipi.py logic again.
-                            # fields = [('s', args.seed), ('np', args.noise_prob), ('fi', args.feedback_intensity), ('n', args.n_examples)]
-                            # If n_examples is None, str(None) is 'None'.
-                            
-                            # However, our current files have n=2000. 
-                            # Let's verify how n_val is passed. 
-                            # if n_val: cmd.extend(['-n', n_val])
-                            # So if n_val is not None, it is passed.
+                            n_str = n_val if n_val else 'None' 
                             
                             # Replicate basename logic
                             basename_n = n_val if n_val else 'None'
                             basename = '{}__{}__{}__s={}__np={}__fi={}__n={}'.format(
                                 problem, learner, strategy, seed, noise_prob, intensity, basename_n)
-                            # Actually there is more to it, fields are joined by __.
-                            # And there are double underscores between main parts and params.
-                            # Let's look at the existing file: fashion__mlp__random__s=0__np=0.0__fi=100__n=2000.pickle
                             
                             expected_file = os.path.join('results', basename + '.pickle')
                             
@@ -149,7 +139,9 @@ def run_experiment(mode='full', start_seed=0, count=5, explain=False):
                                 '-T', T_val, 
                                 '-e', e_val, 
                                 '-S', S_val, 
+                                '-S', S_val, 
                                 '-P', P_val, 
+                                '-F', F_val,
                             ]
                             
                             if n_val:
