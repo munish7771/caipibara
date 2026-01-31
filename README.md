@@ -14,7 +14,6 @@ See [Project Proposal](proposal.md) for detailed motivation and methodology.
 *   `results/`: Experiment logs and plots.
 
 ## Setup
-
 1.  Install dependencies:
     ```bash
     pip install -r requirements.txt
@@ -23,6 +22,29 @@ See [Project Proposal](proposal.md) for detailed motivation and methodology.
     ```bash
     pip install -e .
     ```
+
+### Setup on macOS
+Run the following commands to set up the environment from scratch:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/munish7771/caipibara.git
+cd caipibara
+
+# 2. Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Install dependencies
+pip install --upgrade pip
+pip install numpy scipy scikit-learn matplotlib scikit-image lime gensim blessed requests
+
+# 4. Download datasets
+python3 src/download_fmnist.py
+
+# 5. Verify installation with a fast run
+python3 src/run_stress_test.py --mode fast
+```
 
 ## Reproduction (RQ2: Passive Evaluation)
 To reproduce the baseline results (Fashion MNIST with corner confounders):
