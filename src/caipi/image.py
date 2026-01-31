@@ -65,23 +65,29 @@ class ImageProblem(Problem):
                                           ratio=0.1,
                                           sigma=0,
                                           random_seed=0)
-        expl = explainer.explain_instance(self.X[i],
-                                          top_labels=len(self.class_names),
-                                          classifier_fn=learner.predict_proba,
-                                          segmentation_fn=segmenter,
-                                          model_regressor=local_model,
-                                          num_samples=self.n_samples,
-                                          num_features=self.n_features,
-                                          batch_size=1,
-                                          hide_color=False)
-        _, mask = expl.get_image_and_mask(pred_y,
-                                          positive_only=False,
-                                          num_features=self.n_features,
-                                          min_weight=0.01,
-                                          hide_rest=False)
-        if return_segments:
-            return mask, expl.segments
-        return mask
+        try:
+            expl = explainer.explain_instance(self.X[i],
+                                              top_labels=len(self.class_names),
+                                              classifier_fn=learner.predict_proba,
+                                              segmentation_fn=segmenter,
+                                              model_regressor=local_model,
+                                              num_samples=self.n_samples,
+                                              num_features=self.n_features,
+                                              batch_size=1,
+                                              hide_color=False)
+            _, mask = expl.get_image_and_mask(pred_y,
+                                              positive_only=False,
+                                              num_features=self.n_features,
+                                              min_weight=0.01,
+                                              hide_rest=False)
+            if return_segments:
+                return mask, expl.segments
+            return mask
+        except Exception as e:
+            print(f"LIME Error on instance {i}: {e}")
+            if return_segments:
+                return None, None
+            return None
 
     def query_label(self, i):
         return self.y[i]
