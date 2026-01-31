@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 
+import sys
+import os
+from os.path import join, dirname, basename as get_basename
+
+
 import numpy as np
 from sklearn.utils import check_random_state
 from sklearn.model_selection import StratifiedKFold, StratifiedShuffleSplit
@@ -37,9 +42,10 @@ LEARNERS = {
 }
 
 
+
 def _get_basename(args):
     # Simplified basename to avoid Windows MAX_PATH issues
-    basename = '__'.join([args.problem, args.learner, args.strategy])
+    basename_str = '__'.join([args.problem, args.learner, args.strategy])
     # key fields only
     fields = [
         ('s', args.seed),
@@ -47,12 +53,38 @@ def _get_basename(args):
         ('fi', args.feedback_intensity),
         ('n', args.n_examples),
     ]
-    basename += '__' + '__'.join([name + '=' + str(value)
+    basename_str += '__' + '__'.join([name + '=' + str(value)
                                   for name, value in fields])
     
     output_dir = 'results'
     os.makedirs(output_dir, exist_ok=True)
-    return join(output_dir, basename)
+    return join(output_dir, basename_str)
+
+class Tee:
+    def __init__(self, filename):
+        self.terminal = sys.stdout
+        self.filename = filename
+        self.log = None
+
+    def __enter__(self):
+        self.log = open(self.filename, 'w')
+        sys.stdout = self
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        sys.stdout = self.terminal
+        if self.log:
+            self.log.close()
+
+    def write(self, message):
+         self.terminal.write(message)
+         self.log.write(message)
+         self.log.flush() # Ensure it writes immediately
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
 
 
 def _subsample(problem, examples, prop, rng=None):
@@ -80,6 +112,12 @@ def eval_passive(problem, args, rng=None):
 
     rng = check_random_state(rng)
     basename = _get_basename(args)
+    # Plot directory setup
+    plot_dir = join('src', 'plots')
+    os.makedirs(plot_dir, exist_ok=True)
+    # plot_basename needs to be in src/plots/ but share the filename part of basename
+    plot_basename = join(plot_dir, os.path.basename(basename))
+
 
     folds = StratifiedShuffleSplit(n_splits=args.n_folds, random_state=0) \
                 .split(problem.y, problem.y)
@@ -101,14 +139,14 @@ def eval_passive(problem, args, rng=None):
     print('Computing full-train performance...')
     perf = problem.eval(learner, train_examples,
                         test_examples, eval_examples,
-                        t='train', basename=basename)
+                        t='train', basename=plot_basename)
     print('perf on full training set =', perf)
     perf_train = perf
 
     print('Checking LIME stability...')
     perf = problem.eval(learner, train_examples,
                         test_examples, eval_examples,
-                        t='train2', basename=basename)
+                        t='train2', basename=plot_basename)
     print('perf on full training set =', perf)
 
     print('Computing corrections for {} examples...'.format(len(train_examples)))
@@ -134,7 +172,7 @@ def eval_passive(problem, args, rng=None):
     train_corr_params = learner.get_params()
     perf = problem.eval(learner, train_examples,
                         test_examples, eval_examples,
-                        t='train+corr', basename=basename)
+                        t='train+corr', basename=plot_basename)
     print('perf on corrected set     =', perf)
 
     print('w_train        :\n', train_params)
@@ -161,17 +199,31 @@ def caipi(problem,
           noise_prob=0.0,
           feedback_intensity=-1,
           basename=None,
+          plot_basename=None,
           snapshot_path=None,
           rng=None):
     rng = check_random_state(rng)
 
     start_t = 0
+    initial_len = len(problem.X)
+
     if snapshot_path and os.path.exists(snapshot_path):
         print(f"Resuming from snapshot: {snapshot_path}")
         try:
             snap = load(snapshot_path)
             # data integrity check
             if 't' in snap and 'known_examples' in snap:
+                 corrections_snap = snap.get('corrections', set())
+                 
+                 # Restore dynamic data if present
+                 if 'X_extra' in snap and len(snap['X_extra']) > 0:
+                     problem.X = vstack([problem.X, snap['X_extra']])
+                     problem.y = hstack([problem.y, snap['y_extra']])
+                 elif corrections_snap and max(corrections_snap) >= initial_len:
+                      # If we have indices out of bounds but no data to back them up,
+                      # the snapshot is useless for this session.
+                      raise ValueError("Snapshot contains corrections but no image data. Cannot resume.")
+
                  start_t = snap['t'] + 1
                  known_examples = snap['known_examples']
                  corrections = snap['corrections']
@@ -185,6 +237,9 @@ def caipi(problem,
         except Exception as e:
             print(f"  Failed to load snapshot: {e}")
             print("  Starting from scratch.")
+            # Ensure we don't start with partial state if exception occurred mid-update
+            start_t = 0
+            # Note: We rely on the fact that known_examples arg wasn't overwritten if we raised early
 
     print('CAIPI T={} #train={} #known={} #test={} #eval={}'.format(
           max_iters,
@@ -250,7 +305,7 @@ def caipi(problem,
                                     [i],
                                     [i],
                                     t=t,
-                                    basename=basename + '_instant' if basename else None)
+                                    basename=plot_basename + '_instant' if plot_basename else None)
         instant_perfs.append(instant_perf)
 
         true_y = problem.query_label(i)
@@ -274,7 +329,7 @@ def caipi(problem,
                             train_examples,
                             test_examples,
                             eval_examples if do_eval else None,
-                            t=t, basename=basename)
+                            t=t, basename=plot_basename)
         perf = tuple(list(perf) + list([len(corrections)]))
         perfs.append(perf)
 
@@ -289,7 +344,9 @@ def caipi(problem,
                  'perfs': perfs,
                  'instant_perfs': instant_perfs,
                  'params': params,
-                 'rng_state': rng.get_state()
+                 'rng_state': rng.get_state(),
+                 'X_extra': problem.X[initial_len:],
+                 'y_extra': problem.y[initial_len:]
              })
 
     if snapshot_path and os.path.exists(snapshot_path):
@@ -303,6 +360,12 @@ def eval_interactive(problem, args, rng=None):
 
     rng = check_random_state(args.seed)
     basename = _get_basename(args)
+    
+    # Plot directory setup
+    plot_dir = join('src', 'plots')
+    os.makedirs(plot_dir, exist_ok=True)
+    plot_basename = join(plot_dir, os.path.basename(basename))
+
 
     folds = StratifiedKFold(n_splits=args.n_folds, shuffle=True, random_state=0) \
                 .split(problem.y, problem.y)
@@ -357,7 +420,8 @@ def eval_interactive(problem, args, rng=None):
 
                   noise_prob=args.noise_prob,
                   feedback_intensity=args.feedback_intensity,
-                  basename=None,
+                  basename=basename,
+                  plot_basename=plot_basename,
                   snapshot_path=basename + '_fold={}_snapshot.pickle'.format(k),
                   rng=rng)
         perfs.append(perf)
@@ -426,7 +490,7 @@ def main():
                        help='Text vectorizer to use')
     args = parser.parse_args()
 
-    np.seterr(all='raise', under='ignore')
+    # np.seterr(all='raise', under='ignore')
     np.set_printoptions(precision=3, linewidth=80, threshold=np.inf)
     np.random.seed(args.seed)
 
@@ -442,12 +506,19 @@ def main():
                                      vect_type=args.vectorizer,
                                      rng=rng)
 
-    if args.passive:
-        print('Evaluating passive learning...')
-        eval_passive(problem, args, rng=rng)
-    else:
-        print('Evaluating interactive learning...')
-        eval_interactive(problem, args, rng=rng)
+    # Redirect stdout to a log file
+    basename = _get_basename(args)
+    log_file = basename + '.txt'
+    
+    print(f"Logging to {log_file}")
+    
+    with Tee(log_file):
+        if args.passive:
+            print('Evaluating passive learning...')
+            eval_passive(problem, args, rng=rng)
+        else:
+            print('Evaluating interactive learning...')
+            eval_interactive(problem, args, rng=rng)
 
 if __name__ == '__main__':
     main()
