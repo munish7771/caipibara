@@ -24,6 +24,7 @@ def run_experiment(mode='full', start_seed=0, count=5, explain=False):
     
     # Determine seed range
     if mode == 'fast': count = min(count, 2)
+    if mode == 'quarter': count = min(count, 2)
     if mode == 'dry-run': count = 1
     
     end_seed = start_seed + count
