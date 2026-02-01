@@ -1,162 +1,72 @@
+#!/usr/bin/env python3
 import numpy as np
-import gzip
+import sys
 import os
-from os.path import join
-from sklearn.neural_network import MLPClassifier
-from sklearn.metrics import accuracy_score
 
-def load_mnist(path, kind='train'):
-    """Load MNIST data from `path`"""
-    labels_path = join(path, '{}-labels-idx1-ubyte.gz'.format(kind))
-    images_path = join(path, '{}-images-idx3-ubyte.gz'.format(kind))
+# Ensure we can import from the current directory
+sys.path.append(os.getcwd())
 
-    if not os.path.exists(labels_path):
-        raise FileNotFoundError(f"File not found: {labels_path}")
+# Import the necessary components from the main script
+# This ensures we use the EXACT same model, data loading, and evaluation logic
+from src.run_caipi import PROBLEMS, eval_passive
+
+class BaselineArgs:
+    """Mock arguments object to pass to eval_passive"""
+    def __init__(self):
+        # Core Settings
+        self.problem = 'fashion'
+        self.learner = 'mlp'
+        self.strategy = 'random' # Not used in passive
+        self.seed = 0
+        
+        # Data Config (Matching Stress Test 'quarter' mode)
+        self.n_examples = 2000
+        self.n_folds = 10
+        self.prop_eval = 0.05
+        
+        # THE REQUESTED CONFIGURATION
+        self.noise_prob = 0.0          # Zero Noise
+        self.feedback_intensity = 1    # 1 Counterexample
+        
+        # Problem Params (Defaults)
+        self.corr_type = None
+        self.n_samples = 200    # Quarter mode: 200
+        self.n_features = 3     # Quarter mode: 3
+        self.kernel_width = 0.75
+        self.lime_repeats = 1
+        self.vectorizer = None
+
+def run_caipi_baseline():
+    print("--- Running Standardized CAIPI Baseline ---")
+    print("Configuration: Noise=0.0, Intensity=1")
     
-    with gzip.open(labels_path, 'rb') as fp:
-        labels = np.frombuffer(fp.read(), dtype=np.uint8, offset=8)
-
-    if not os.path.exists(images_path):
-        raise FileNotFoundError(f"File not found: {images_path}")
-
-    with gzip.open(images_path, 'rb') as fp:
-        images = np.frombuffer(fp.read(), dtype=np.uint8, offset=16)
-
-    return images.reshape(len(labels), 28, 28), labels
-
-def add_confounders(images, labels, mode='train', seed=0):
-    rng = np.random.RandomState(seed)
-    noisy = []
+    args = BaselineArgs()
+    rng = np.random.RandomState(args.seed)
     
-    # 10 classes, map to 10 distinct shades
-    # Use linspace to get well-separated values (0, 28, 56, ..., 255)
-    shades = np.linspace(0, 255, 10).astype(np.uint8)
+    print(f"Initializing {args.problem} problem with n={args.n_examples}...")
+    print(f"  > Noise Prob: {args.noise_prob}")
+    print(f"  > Intensity: {args.feedback_intensity}")
+    print(f"  > Folds: {args.n_folds}")
+    print(f"  > N Samples (LIME): {args.n_samples}")
+    print(f"  > N Features (LIME): {args.n_features}")
     
-    for img, lbl in zip(images, labels):
-        r, c = img.shape
-        # 4x4 patch in random corner
-        # Four corners: TL, TR, BL, BR
-        corners = [
-            (slice(0, 4), slice(0, 4)),
-            (slice(0, 4), slice(c-4, c)),
-            (slice(r-4, r), slice(0, 4)),
-            (slice(r-4, r), slice(c-4, c))
-        ]
-        loc = corners[rng.randint(4)]
-        
-        # Shade logic
-        if mode == 'train':
-            val = shades[lbl]
-        else: # test or random (for CE)
-            val = rng.randint(0, 256)
-            
-        new_img = img.copy()
-        new_img[loc] = val
-        noisy.append(new_img)
-        
-    return np.array(noisy)
-
-def flatten(images):
-    return images.reshape(images.shape[0], -1)
-
-def run_experiment():
-    # Attempt to locate data
-    # Assuming standard path relative to project root
-    # Adjust as necessary
-    path = join('data', 'fashion')
+    # Initialize the exact same problem class as the main experiment
+    problem = PROBLEMS[args.problem](
+        n_examples=args.n_examples,
+        corr_type=args.corr_type,
+        n_samples=args.n_samples,
+        n_features=args.n_features,
+        kernel_width=args.kernel_width,
+        lime_repeats=args.lime_repeats,
+        vect_type=args.vectorizer,
+        rng=rng
+    )
     
-    print(f"Loading data from {path}...")
-    try:
-        train_images, train_labels = load_mnist(path, 'train')
-        test_images, test_labels = load_mnist(path, 't10k')
-    except Exception as e:
-        print(f"Error loading data: {e}")
-        print("Please ensure 'data/fashion/' contains the MNIST .gz files.")
-        return
+    print("Executing Passive Evaluation...")
+    # This will run the training, then generate corrections, then retrain
+    # and save the *_passive_models.pickle file
+    eval_passive(problem, args, rng=rng)
+    print("Done.")
 
-    print(f"Loaded {len(train_images)} training and {len(test_images)} test images.")
-
-    # --- Baseline: No Corrections ---
-    print("\n--- Baseline: No Corrections ---")
-    
-    # Train set: Confounder shade is function of label
-    print("Generating Confounded Training Set (Mode=Train)...")
-    X_train_bad = add_confounders(train_images, train_labels, mode='train', seed=42)
-    
-    # Test set: Confounder shade is random
-    print("Generating Confounded Test Set (Mode=Test)...")
-    X_test_bad = add_confounders(test_images, test_labels, mode='test', seed=100) 
-
-    # MLP Setup
-    # Ross et al 2017: "two hidden layers of 100 units each"
-    mlp = MLPClassifier(hidden_layer_sizes=(100, 100), random_state=42, max_iter=200)
-    
-    print("Training MLP (Baseline)...")
-    # Using 28*28 = 784 features
-    mlp.fit(flatten(X_train_bad), train_labels)
-    acc = mlp.score(flatten(X_test_bad), test_labels)
-    print(f"Baseline Accuracy (Expected ~48%): {acc*100:.2f}%")
-
-    # Collect results for plotting
-    results = {'Baseline': acc}
-    
-    # --- Corrections (CE) ---
-    # Strategy: Add c counterexamples per training image
-    # Reformulate training data: Original (Bad) + c * Augmented (Randomized Confounder)
-    
-    c_values = [1, 3, 5]
-    for c_val in c_values:
-        print(f"\n--- CE Strategy: c={c_val} ---")
-        
-        X_aug_list = []
-        y_aug_list = []
-        
-        print(f"Generating {c_val}x Counterexamples...")
-        for k in range(c_val):
-            # Use distinct seeds to get different random choices (corners/shades)
-            # mode='test' implies random shades, simulating 'decoy pixels randomized'
-            # We pass original CLEAN images to add_confounders to generate fresh variants
-            X_aug_k = add_confounders(train_images, train_labels, mode='test', seed=1000 + k)
-            X_aug_list.append(X_aug_k)
-            y_aug_list.append(train_labels) 
-            
-        X_aug = np.concatenate(X_aug_list, axis=0)
-        y_aug = np.concatenate(y_aug_list, axis=0)
-        
-        # Combine Original (Bad) + Augmented
-        X_final = np.concatenate([X_train_bad, X_aug], axis=0)
-        y_final = np.concatenate([train_labels, y_aug], axis=0)
-        
-        print(f"Training MLP on {len(X_final)} examples...")
-        mlp_ce = MLPClassifier(hidden_layer_sizes=(100, 100), random_state=42, max_iter=200)
-        mlp_ce.fit(flatten(X_final), y_final)
-        acc_ce = mlp_ce.score(flatten(X_test_bad), test_labels)
-        print(f"CE (c={c_val}) Accuracy (Expected >80%): {acc_ce*100:.2f}%")
-        results[f'CE (c={c_val})'] = acc_ce
-
-    # --- Plotting ---
-    try:
-        import matplotlib.pyplot as plt
-        
-        plt.figure(figsize=(8, 6))
-        names = list(results.keys())
-        values = [v * 100 for v in results.values()]
-        
-        plt.bar(names, values, color=['gray', 'tab:blue', 'tab:blue', 'tab:blue'])
-        plt.ylabel('Test Accuracy (%)')
-        plt.title('Effect of Counterexamples on Decoy Fashion MNIST')
-        plt.ylim(0, 100)
-        
-        for i, v in enumerate(values):
-            plt.text(i, v + 1, f"{v:.1f}%", ha='center')
-            
-        output_path = 'rq2_baseline_results.png'
-        plt.savefig(output_path)
-        print(f"\nPlot saved to {output_path}")
-        
-    except ImportError:
-        print("\nMatplotlib not found. Skipping plotting.")
-
-
-if __name__ == '__main__':
-    run_experiment()
+if __name__ == "__main__":
+    run_caipi_baseline()
