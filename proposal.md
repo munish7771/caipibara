@@ -38,10 +38,11 @@ These changes let us explore the boundary between helpful guidance and overfitti
 ## 4. Experiments
 
 **Dataset & Metrics:**
-*   **Datasets:** Decoy Fashion MNIST and a simple Colors logic dataset with known spurious correlations.
-*   **Metrics:** Clean test accuracy, explanation alignment (F1 score), and the generalization gap between training and test performance.
+*   **Datasets:** Decoy Fashion MNIST (reduced to 5 classes) and a simple Colors logic dataset with known spurious correlations.
+*   **Metrics:** Clean test accuracy, explanation alignment (Confounder Recall), and the generalization gap between training and test performance.
 
 **Experimental Scope:**
-*   Run CAIPI with different feedback intensities (e.g., 1 to 100 counterexamples per iteration).
-*   Repeat experiments with 5 random seeds.
-*   Simulate user errors (10–100% noise).
+*   **Feedback Intensities ($c$):** $\{1, 5, 20, 100\}$.
+*   **Noise Probabilities ($p$):** $\{0.1, 0.5, 1.0\}$.
+*   **Parameters:** Feature count reduced to $F=3$ for finding confounders reliably.
+*   **Repetitions:** Experiments repeated with multiple random seeds (e.g., 2-5) depending on computation constraints.
