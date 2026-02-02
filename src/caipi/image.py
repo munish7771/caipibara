@@ -160,6 +160,20 @@ class ImageProblem(Problem):
             return set()
 
         X_corrections = np.array(X_corrections)
+
+        # Save a sample of corrections for debugging/visualization
+        if feedback_intensity > 1:
+            try:
+                import os
+                debug_dir = join('src', 'plots', 'corrections')
+                os.makedirs(debug_dir, exist_ok=True)
+                for idx, img_arr in enumerate(X_corrections[:5]):
+                    fname = join(debug_dir, f'corr_img{i}_copy{idx}.png')
+                    plt.imsave(fname, img_arr)
+                print(f"  Saved {min(5, len(X_corrections))} sample corrections to {debug_dir}")
+            except Exception as e:
+                print(f"  Warning: Could not save debug images: {e}")
+
         y_corrections = np.array([pred_y] * n_corrections, dtype=np.int8)
         extra_examples = set(range(self.X.shape[0],
                                    self.X.shape[0] + n_corrections))

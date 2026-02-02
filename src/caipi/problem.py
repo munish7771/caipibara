@@ -24,7 +24,7 @@ class Problem:
         """Queries the oracle for a label."""
         raise NotImplementedError()
 
-    def query_corrections(self, X_corr, y_corr, i, pred_y, pred_expl, noise_prob=0.0, feedback_intensity=-1):
+    def query_corrections(self, i, pred_y, pred_expl, X_test, noise_prob=0.0, feedback_intensity=-1):
         """Queries the oracle for an improved explanation."""
         raise NotImplementedError()
 

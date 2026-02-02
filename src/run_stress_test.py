@@ -3,11 +3,10 @@ import os
 import sys
 
 # Experiment Parameters
-# PROBLEMS = ['colors-rule0', 'fashion']
 PROBLEMS = ['fashion'] # Using fashion (decoy) to match baseline
 LEARNERS = ['mlp'] # Using mlp to match baseline
 STRATEGIES = ['least-confident'] # Simple baseline strategies
-NOISE_PROBS = [0.1, 0.5, 1.0]
+NOISE_PROBS = [0.1, 0.5, 1.0] # noise probabilities
 INTENSITIES = [1, 5, 20, 100] # feedback_intensity values
 
 def run_experiment(mode='full', start_seed=0, count=5, explain=False):

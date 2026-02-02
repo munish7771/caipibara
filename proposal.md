@@ -44,4 +44,4 @@ These changes let us explore the boundary between helpful guidance and overfitti
 **Experimental Scope:**
 *   Run CAIPI with different feedback intensities (e.g., 1 to 100 counterexamples per iteration).
 *   Repeat experiments with 5 random seeds.
-*   Simulate user errors (10–30% noise).
+*   Simulate user errors (10–100% noise).

@@ -7,26 +7,33 @@ import os
 sys.path.append(os.getcwd())
 
 # Import the necessary components from the main script
-# This ensures we use the EXACT same model, data loading, and evaluation logic
-from src.run_caipi import PROBLEMS, eval_passive
+from src.run_caipi import PROBLEMS, eval_interactive
 
 class BaselineArgs:
-    """Mock arguments object to pass to eval_passive"""
+    """Mock arguments object to pass to eval_interactive"""
     def __init__(self):
         # Core Settings
         self.problem = 'fashion'
         self.learner = 'mlp'
-        self.strategy = 'random' # Not used in passive
+        self.strategy = 'least-confident' # Match stress test
         self.seed = 0
         
         # Data Config (Matching Stress Test 'quarter' mode)
         self.n_examples = 2000
-        self.n_folds = 10
+        self.n_folds = 10  # Match stress test default
+        self.prop_known = 0.05 # Initial known
         self.prop_eval = 0.05
         
         # THE REQUESTED CONFIGURATION
-        self.noise_prob = 0.0          # Zero Noise
+        self.noise_prob = 0.0          # Zero Noise (Ideal)
         self.feedback_intensity = 1    # 1 Counterexample
+        
+        # Interaction Params
+        self.max_iters = 50
+        self.eval_iters = 1 # Eval every step for smooth baseline curve? Or 10 to match stress test?
+                            # Stress test uses T=50, e=10. Let's use 5 to be slightly smoother or 10.
+        self.eval_iters = 5 
+        self.start_expl_at = 0
         
         # Problem Params (Defaults)
         self.corr_type = None
@@ -35,10 +42,12 @@ class BaselineArgs:
         self.kernel_width = 0.75
         self.lime_repeats = 1
         self.vectorizer = None
+        
+        self.passive = False # Ensure we don't trigger passive mode logic in logging
 
 def run_caipi_baseline():
-    print("--- Running Standardized CAIPI Baseline ---")
-    print("Configuration: Noise=0.0, Intensity=1")
+    print("--- Running Standardized CAIPI Baseline (Ideal Active Learning) ---")
+    print("Configuration: Noise=0.0, Intensity=1, Strategy=Least-Confident, T=50")
     
     args = BaselineArgs()
     rng = np.random.RandomState(args.seed)
@@ -47,8 +56,7 @@ def run_caipi_baseline():
     print(f"  > Noise Prob: {args.noise_prob}")
     print(f"  > Intensity: {args.feedback_intensity}")
     print(f"  > Folds: {args.n_folds}")
-    print(f"  > N Samples (LIME): {args.n_samples}")
-    print(f"  > N Features (LIME): {args.n_features}")
+    print(f"  > Max Iters: {args.max_iters}")
     
     # Initialize the exact same problem class as the main experiment
     problem = PROBLEMS[args.problem](
@@ -62,10 +70,8 @@ def run_caipi_baseline():
         rng=rng
     )
     
-    print("Executing Passive Evaluation...")
-    # This will run the training, then generate corrections, then retrain
-    # and save the *_passive_models.pickle file
-    eval_passive(problem, args, rng=rng)
+    print("Executing Interactive Evaluation...")
+    eval_interactive(problem, args, rng=rng)
     print("Done.")
 
 if __name__ == "__main__":

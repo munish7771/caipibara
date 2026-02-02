@@ -160,7 +160,7 @@ class TextProblem(Problem):
     def query_label(self, i):
         return self.y[i]
 
-    def query_corrections(self, i, pred_y, pred_expl, X_test):
+    def query_corrections(self, i, pred_y, pred_expl, X_test, noise_prob=0.0, feedback_intensity=-1):
         if pred_expl is None:
             return set()
         if pred_y != self.y[i]:

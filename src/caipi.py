@@ -251,30 +251,7 @@ def caipi(problem,
     X_test_tuples = {tuple(densify(problem.X[i]).ravel())
                      for i in test_examples}
 
-    #learner.select_model(problem.X[train_examples],
-    #                     problem.y[train_examples])
-    #learner.fit(problem.X[train_examples],
-    #            problem.y[train_examples])
-    #perf = problem.eval(learner,
-    #                    train_examples,
-    #                    test_examples,
-    #                    eval_examples,
-    #                    t='train',
-    #                    basename=basename)
-    #params = np.round(learner.get_params(), decimals=1)
-    #print('train model = {params}, perfs = {perf}'.format(**locals()))
-
-    #learner.select_model(problem.X[known_examples],
-    #                     problem.y[known_examples])
     if start_t == 0:
-        # Initial fit only if starting from scratch, or re-fit if resuming?
-        # If resuming, we need to re-fit with the loaded known_examples + corrections
-        # But wait, we haven't loaded them yet if start_t == 0.
-        
-        # Original code:
-        #learner.fit(problem.X[known_examples],
-        #            problem.y[known_examples])
-        
         corrections = set()
         perfs, instant_perfs, params = [], [], []
 

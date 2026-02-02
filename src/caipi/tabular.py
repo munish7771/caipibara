@@ -239,10 +239,10 @@ class ToyProblem(TabularProblem):
         value = int(feat.split(',')[-1].split('=')[-1])
         return r, c, value
 
-    def query_corrections(self, X_corr, y_corr, i, pred_y, pred_expl, X_test, noise_prob=0.0, feedback_intensity=-1):
+    def query_corrections(self, i, pred_y, pred_expl, X_test, noise_prob=0.0, feedback_intensity=-1):
         true_y = self.y[i]
         if pred_expl is None or pred_y != true_y:
-            return X_corr, y_corr
+            return set()
 
         z = self.Z[i]
         true_feats = {feat.split('=')[0] for (feat, _) in self.z_to_expl(z)}
@@ -258,14 +258,21 @@ class ToyProblem(TabularProblem):
             Z_new_corr.append(z_corr)
 
         if not len(Z_new_corr):
-            return X_corr, y_corr
+            return set()
+
+        if feedback_intensity > 0 and len(Z_new_corr) > feedback_intensity:
+            self.rng.shuffle(Z_new_corr)
+            Z_new_corr = Z_new_corr[:feedback_intensity]
 
         X_new_corr = np.array(Z_new_corr, dtype=np.float64)
         y_new_corr = np.array([true_y for _ in Z_new_corr], dtype=np.int8)
 
-        X_corr = vstack([X_corr, X_new_corr])
-        y_corr = hstack([y_corr, y_new_corr])
-        return X_corr, y_corr
+        n_examples = len(self.y)
+        self.X = vstack([self.X, X_new_corr])
+        self.y = hstack([self.y, y_new_corr])
+        self.Z = vstack([self.Z, np.array(Z_new_corr)])
+
+        return set(range(n_examples, len(self.y)))
 
     def save_expl(self, path, i, y, expl):
         z = self.Z[i].reshape((3, -1))
@@ -677,10 +684,10 @@ class SudokuProblem(TabularProblem):
     def z_to_expl(self, z):
         raise NotImplementedError()
 
-    def query_corrections(self, X_corr, y_corr, i, pred_y, pred_expl, X_test):
+    def query_corrections(self, i, pred_y, pred_expl, X_test, noise_prob=0.0, feedback_intensity=-1):
         true_y = self.y[i]
         if pred_expl is None or pred_y != true_y:
-            return X_corr, y_corr
+            return set()
         raise NotImplementedError()
 
     def save_expl(self, path, i, y, expl):
